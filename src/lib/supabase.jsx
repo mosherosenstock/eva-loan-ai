@@ -4,11 +4,33 @@ import { createContext, useContext, useEffect, useState } from 'react'
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase environment variables')
+// Improved error handling for missing environment variables
+const handleMissingEnvVars = () => {
+  const missingVars = []
+  if (!supabaseUrl) missingVars.push('VITE_SUPABASE_URL')
+  if (!supabaseAnonKey) missingVars.push('VITE_SUPABASE_ANON_KEY')
+  
+  if (missingVars.length > 0) {
+    const errorMessage = `Missing required environment variables: ${missingVars.join(', ')}. Please configure these in your Vercel deployment settings.`
+    console.error(errorMessage)
+    
+    // In development, throw error to help with debugging
+    if (import.meta.env.DEV) {
+      throw new Error(errorMessage)
+    }
+    
+    // In production, return null to allow graceful degradation
+    return null
+  }
+  
+  return true
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+// Check environment variables before creating client
+const envCheck = handleMissingEnvVars()
+
+// Create Supabase client only if environment variables are available
+export const supabase = envCheck ? createClient(supabaseUrl, supabaseAnonKey) : null
 
 // Auth Context
 const AuthContext = createContext({})
@@ -16,13 +38,27 @@ const AuthContext = createContext({})
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
 
   useEffect(() => {
+    // If Supabase is not configured, show error state
+    if (!supabase) {
+      setError('Supabase is not configured. Please check your environment variables.')
+      setLoading(false)
+      return
+    }
+
     // Get initial session
     const getSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      setUser(session?.user ?? null)
-      setLoading(false)
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        setUser(session?.user ?? null)
+        setLoading(false)
+      } catch (err) {
+        console.error('Error getting session:', err)
+        setError('Failed to initialize authentication')
+        setLoading(false)
+      }
     }
 
     getSession()
@@ -39,6 +75,9 @@ export const AuthProvider = ({ children }) => {
   }, [])
 
   const signIn = async (email, password) => {
+    if (!supabase) {
+      return { data: null, error: { message: 'Supabase is not configured' } }
+    }
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password
@@ -47,6 +86,9 @@ export const AuthProvider = ({ children }) => {
   }
 
   const signUp = async (email, password, userData = {}) => {
+    if (!supabase) {
+      return { data: null, error: { message: 'Supabase is not configured' } }
+    }
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -58,16 +100,25 @@ export const AuthProvider = ({ children }) => {
   }
 
   const signOut = async () => {
+    if (!supabase) {
+      return { error: { message: 'Supabase is not configured' } }
+    }
     const { error } = await supabase.auth.signOut()
     return { error }
   }
 
   const resetPassword = async (email) => {
+    if (!supabase) {
+      return { data: null, error: { message: 'Supabase is not configured' } }
+    }
     const { data, error } = await supabase.auth.resetPasswordForEmail(email)
     return { data, error }
   }
 
   const updatePassword = async (password) => {
+    if (!supabase) {
+      return { data: null, error: { message: 'Supabase is not configured' } }
+    }
     const { data, error } = await supabase.auth.updateUser({
       password
     })
@@ -77,6 +128,7 @@ export const AuthProvider = ({ children }) => {
   const value = {
     user,
     loading,
+    error,
     signIn,
     signUp,
     signOut,
@@ -104,6 +156,9 @@ export const db = {
   // Business Applications
   applications: {
     list: async (sortBy = 'created_date', limit = 500) => {
+      if (!supabase) {
+        throw new Error('Supabase client not initialized')
+      }
       const { data, error } = await supabase
         .from('business_applications')
         .select('*')
@@ -115,6 +170,9 @@ export const db = {
     },
     
     get: async (id) => {
+      if (!supabase) {
+        throw new Error('Supabase client not initialized')
+      }
       const { data, error } = await supabase
         .from('business_applications')
         .select('*')
@@ -126,6 +184,9 @@ export const db = {
     },
     
     create: async (applicationData) => {
+      if (!supabase) {
+        throw new Error('Supabase client not initialized')
+      }
       const { data, error } = await supabase
         .from('business_applications')
         .insert([applicationData])
@@ -137,6 +198,9 @@ export const db = {
     },
     
     update: async (id, updates) => {
+      if (!supabase) {
+        throw new Error('Supabase client not initialized')
+      }
       const { data, error } = await supabase
         .from('business_applications')
         .update(updates)
@@ -149,6 +213,9 @@ export const db = {
     },
     
     delete: async (id) => {
+      if (!supabase) {
+        throw new Error('Supabase client not initialized')
+      }
       const { error } = await supabase
         .from('business_applications')
         .delete()
@@ -162,6 +229,9 @@ export const db = {
   // Application Decisions
   decisions: {
     list: async (limit = 100) => {
+      if (!supabase) {
+        throw new Error('Supabase client not initialized')
+      }
       const { data, error } = await supabase
         .from('application_decisions')
         .select(`
@@ -180,6 +250,9 @@ export const db = {
     },
     
     create: async (decisionData) => {
+      if (!supabase) {
+        throw new Error('Supabase client not initialized')
+      }
       const { data, error } = await supabase
         .from('application_decisions')
         .insert([decisionData])
@@ -194,6 +267,9 @@ export const db = {
   // ML Model Runs
   mlRuns: {
     list: async (limit = 100) => {
+      if (!supabase) {
+        throw new Error('Supabase client not initialized')
+      }
       const { data, error } = await supabase
         .from('ml_model_runs')
         .select('*')
@@ -205,6 +281,9 @@ export const db = {
     },
     
     create: async (runData) => {
+      if (!supabase) {
+        throw new Error('Supabase client not initialized')
+      }
       const { data, error } = await supabase
         .from('ml_model_runs')
         .insert([runData])
@@ -219,6 +298,9 @@ export const db = {
   // AI Chat Sessions
   chatSessions: {
     get: async (sessionId) => {
+      if (!supabase) {
+        throw new Error('Supabase client not initialized')
+      }
       const { data, error } = await supabase
         .from('ai_chat_sessions')
         .select('*')
@@ -230,6 +312,9 @@ export const db = {
     },
     
     create: async (sessionData) => {
+      if (!supabase) {
+        throw new Error('Supabase client not initialized')
+      }
       const { data, error } = await supabase
         .from('ai_chat_sessions')
         .insert([sessionData])
@@ -241,6 +326,9 @@ export const db = {
     },
     
     update: async (sessionId, updates) => {
+      if (!supabase) {
+        throw new Error('Supabase client not initialized')
+      }
       const { data, error } = await supabase
         .from('ai_chat_sessions')
         .update(updates)
@@ -256,6 +344,9 @@ export const db = {
   // Document Uploads
   documents: {
     list: async (applicationId) => {
+      if (!supabase) {
+        throw new Error('Supabase client not initialized')
+      }
       const { data, error } = await supabase
         .from('document_uploads')
         .select('*')
@@ -267,6 +358,9 @@ export const db = {
     },
     
     create: async (documentData) => {
+      if (!supabase) {
+        throw new Error('Supabase client not initialized')
+      }
       const { data, error } = await supabase
         .from('document_uploads')
         .insert([documentData])
@@ -278,6 +372,9 @@ export const db = {
     },
     
     update: async (id, updates) => {
+      if (!supabase) {
+        throw new Error('Supabase client not initialized')
+      }
       const { data, error } = await supabase
         .from('document_uploads')
         .update(updates)
@@ -294,6 +391,11 @@ export const db = {
 // Real-time subscriptions
 export const useRealtimeData = (table, callback) => {
   useEffect(() => {
+    if (!supabase) {
+      console.warn('Supabase client not initialized, cannot subscribe to realtime data.')
+      return
+    }
+
     const subscription = supabase
       .channel(`${table}_changes`)
       .on('postgres_changes', 
